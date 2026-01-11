@@ -1,0 +1,259 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: budgetwise-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: budgetwise
+      MYSQL_USER: budgetwise
+      MYSQL_PASSWORD: budgetwise123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - budgetwise-network
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ubudgetwise", "-pbudgetwise123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and PubSub
+  redis:
+    image: redis:7-alpine
+    container_name: budgetwise-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - budgetwise-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # User Service
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-user-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PRIVATE_KEY_PATH=/app/shared/keys/private.pem
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # Transaction Service
+  transaction-service:
+    build:
+      context: ./services/transaction-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-transaction-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/transaction-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # Budget Service
+  budget-service:
+    build:
+      context: ./services/budget-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-budget-service
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/budget-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # Room Service
+  room-service:
+    build:
+      context: ./services/room-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-room-service
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/room-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-notification-service
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=development
+      - PORT=3005
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/notification-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # Analytics Service (GraphQL)
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: budgetwise-analytics-service
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+      - DATABASE_URL=mysql://budgetwise:budgetwise123@mysql:3306/budgetwise
+      - REDIS_URL=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/analytics-service:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: budgetwise-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=development
+      - PORT=8000
+      - USER_SERVICE_URL=http://user-service:3001
+      - TRANSACTION_SERVICE_URL=http://transaction-service:3002
+      - BUDGET_SERVICE_URL=http://budget-service:3003
+      - ANALYTICS_SERVICE_URL=http://analytics-service:4000
+      - ROOM_SERVICE_URL=http://room-service:3004
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3005
+      - JWT_PUBLIC_KEY_PATH=/app/shared/keys/public.pem
+    depends_on:
+      - user-service
+      - transaction-service
+      - budget-service
+      - analytics-service
+      - room-service
+      - notification-service
+    volumes:
+      - ./api-gateway:/app
+      - /app/node_modules
+      - ./shared:/app/shared
+    networks:
+      - budgetwise-network
+    restart: unless-stopped
+
+  # phpMyAdmin - MySQL Admin Tool
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: budgetwise-phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: budgetwise
+      PMA_PASSWORD: budgetwise123
+    ports:
+      - "5050:80"
+    networks:
+      - budgetwise-network
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  budgetwise-network:
+    driver: bridge
