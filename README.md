@@ -1,4 +1,4 @@
-# BudgetWise - Personal Finance & Patungan App
+# BudgetWise
 
 Aplikasi keuangan pribadi berbasis Microservices yang membantu pengguna mengelola transaksi, budget, dan fitur Patungan (tabungan bersama).
 
